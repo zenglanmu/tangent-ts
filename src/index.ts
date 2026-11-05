@@ -22,6 +22,12 @@ import { decodeAxisLabel, decodeDimension2, decodeRadiusDim } from './dimension.
 import { decodeCornerWindow, decodeIndexPointer, decodeSection } from './index-symbol.ts';
 import { decodeOpening, openingPrimitives } from './opening.ts';
 import type { OpeningCut, OpeningData } from './opening.ts';
+import {
+  clearRecordCache,
+  register,
+  replaceRecordCache,
+  type VendorPluginHost,
+} from './properties.ts';
 import type { DecodedEntity, Primitive, VendorRecord } from './types.ts';
 import { decodeLineStair, decodeRectStair } from './stair.ts';
 import { decodeText } from './text.ts';
@@ -47,6 +53,8 @@ const MAX_RESULT_BYTES = 4 * 1024 * 1024;
 export interface VendorPlugin {
   readonly abiVersion: number;
   decode(records: ArrayBuffer): ArrayBuffer;
+  /** Optional ABI v1 extension; the host calls it once at startup. */
+  register?(host: VendorPluginHost): void;
 }
 
 declare global {
@@ -54,24 +62,35 @@ declare global {
   var __YACR_VENDOR_PLUGIN__: VendorPlugin | undefined;
 }
 
-/** The one export the host calls. */
+/** The one export the host calls for decoding. */
 export function decode(records: ArrayBuffer): ArrayBuffer {
-  if (records.byteLength < RECORDS_HEADER_BYTES) {
-    throw new Error('vendor.truncated');
+  // Cache the parsed records for the optional `properties`/`command` handlers.
+  // The views keep the records frame alive; cost is bounded by the 64 MiB
+  // records-frame limit. A throw (including a result-frame overflow) leaves the
+  // cache empty, so stale handles can never resolve.
+  clearRecordCache();
+  try {
+    if (records.byteLength < RECORDS_HEADER_BYTES) {
+      throw new Error('vendor.truncated');
+    }
+    const view = new DataView(records);
+    if (view.getUint32(0, true) !== RECORDS_MAGIC) {
+      throw new Error('vendor.bad_magic');
+    }
+    const abi = view.getUint32(4, true);
+    if (abi !== abiVersion) {
+      throw new Error(`vendor.unsupported_abi: ${abi}`);
+    }
+    const token = view.getBigUint64(8, true);
+    const generation = view.getBigUint64(16, true);
+    const recordCount = view.getUint32(24, true);
+    const parsed = parseRecords(view, 28, recordCount);
+    replaceRecordCache(parsed);
+    return decodeRecords(token, generation, parsed);
+  } catch (error) {
+    clearRecordCache();
+    throw error;
   }
-  const view = new DataView(records);
-  if (view.getUint32(0, true) !== RECORDS_MAGIC) {
-    throw new Error('vendor.bad_magic');
-  }
-  const abi = view.getUint32(4, true);
-  if (abi !== abiVersion) {
-    throw new Error(`vendor.unsupported_abi: ${abi}`);
-  }
-  const token = view.getBigUint64(8, true);
-  const generation = view.getBigUint64(16, true);
-  const recordCount = view.getUint32(24, true);
-  const parsed = parseRecords(view, 28, recordCount);
-  return decodeRecords(token, generation, parsed);
 }
 
 /** Read one u32 at `offset`, demanding that the frame contains it. */
@@ -92,6 +111,7 @@ function parseRecords(view: DataView, start: number, count: number): VendorRecor
     offset += classNameLength;
     if (offset + 13 > view.byteLength) throw new Error('vendor.truncated');
     const dwgVersion = view.getUint32(offset, true);
+    const source = view.getUint8(offset + 4);
     offset += 5; // dwg_version u32 + source u8
     const handle = view.getBigUint64(offset, true); offset += 8;
     const main = readStream(view, offset); offset = main.offset;
@@ -107,7 +127,7 @@ function parseRecords(view: DataView, start: number, count: number): VendorRecor
       throw new Error('vendor.truncated');
     }
     records.push({
-      className, handle, dwgVersion,
+      className, handle, dwgVersion, source, referenceCount,
       main: main.bytes, mainBits: main.bits, text: text.bytes, textBits: text.bits,
       handleStream: handleStream.bytes, handleBits: handleStream.bits,
       mainSkipBits, textSkipBits, handleSkipBits,
@@ -501,8 +521,23 @@ function clampDiagnostic(message: string): Uint8Array {
   return new Uint8Array(0);
 }
 
+// Optional ABI v1 registration extension. `decode` remains the only required
+// entry; hosts that do not call `register` lose only the property panel and the
+// edit-command interception, never decoding.
+export { register };
+export type {
+  PluginCommandDecision,
+  PluginCommandRequest,
+  PluginPropertyGroup,
+  PluginPropertyPanel,
+  PluginPropertyRow,
+  PluginSelection,
+  PluginSelectionRow,
+  VendorPluginHost,
+} from './properties.ts';
+
 // The host loads this file with a `<script type="module">` (the same pattern as
 // the canvas bootstrap): a module script cannot hand its exports to the page, so
-// it registers the one plugin surface on a stable global. The host validates the
+// it registers the plugin surface on a stable global. The host validates the
 // shape before calling it.
-globalThis.__YACR_VENDOR_PLUGIN__ = { abiVersion, decode };
+globalThis.__YACR_VENDOR_PLUGIN__ = { abiVersion, decode, register };

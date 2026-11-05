@@ -8,7 +8,7 @@ import type { Primitive, VendorRecord } from './types.ts';
 const WALL_GEOMETRY_BYTES = 84;
 
 export interface WallData {
-  start: Point3; end: Point3; left: number; right: number;
+  start: Point3; end: Point3; left: number; right: number; height: number;
   joins: number[]; openings: number; length: number;
 }
 
@@ -101,7 +101,7 @@ export function parseWall(record: VendorRecord, reasons: Map<string, number>): W
     bump(reasons, 'vendor.tch.wall_geometry_invalid');
     return null;
   }
-  return { start, end, left, right, joins, openings, length };
+  return { start, end, left, right, height, joins, openings, length };
 }
 
 /** Build the wall body, splitting both sides around merged opening intervals. */

@@ -41,6 +41,11 @@ export interface OpeningData {
   parts: OpeningData[];
 }
 
+/**
+ * Parse one `TCH_OPENING` and expose the parsed data (owning wall handle,
+ * width/thickness/height, position, segments, composite parts). Display
+ * primitives are a separate step in `openingPrimitives`.
+ */
 export function decodeOpening(
   record: VendorRecord,
   reasons: Map<string, number>,

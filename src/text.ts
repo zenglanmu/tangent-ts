@@ -1,5 +1,6 @@
 // `TCH_TEXT` / `TCH_MTEXT`: base-6 text fields. `TCH_MTEXTNEW` is unsupported.
 import { readText, reader, skipPropertyBag } from './bit-reader.ts';
+import type { Point3 } from './bit-reader.ts';
 import { ClassText } from './base6.ts';
 import { bump } from './diagnostics.ts';
 import type { Primitive, VendorRecord } from './types.ts';
@@ -11,10 +12,21 @@ function textAttachment(align: number): number {
   return align >= 10 && align <= 13 ? (align === 13 ? 5 : align - 3) : align;
 }
 
-export function decodeText(
+export interface TextData {
+  origin: Point3;
+  /** World height after the base scale is applied (same as the primitive). */
+  height: number;
+  rotation: number;
+  wrapWidth: number;
+  attachment: number;
+  text: string;
+}
+
+/** Parse and validate `TCH_TEXT` / `TCH_MTEXT` fields without building primitives. */
+export function parseText(
   record: VendorRecord,
   reasons: Map<string, number>,
-): Primitive[] | null {
+): TextData | null {
   const main = reader(record.main, record.mainBits, record.mainSkipBits);
 
   const base = main.readByte();
@@ -104,13 +116,29 @@ export function decodeText(
     bump(reasons, 'vendor.tch.text_layout');
     return null;
   }
-  return [{
-    kind: 4,
+  return {
     origin: { x, y, z },
     height: height * scale,
     rotation,
     wrapWidth,
     attachment,
     text: value,
+  };
+}
+
+export function decodeText(
+  record: VendorRecord,
+  reasons: Map<string, number>,
+): Primitive[] | null {
+  const data = parseText(record, reasons);
+  if (!data) return null;
+  return [{
+    kind: 4,
+    origin: data.origin,
+    height: data.height,
+    rotation: data.rotation,
+    wrapWidth: data.wrapWidth,
+    attachment: data.attachment,
+    text: data.text,
   }];
 }

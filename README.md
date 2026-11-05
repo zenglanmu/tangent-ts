@@ -5,23 +5,64 @@ Tianzheng (`TCH_*`) vendor-record decoder plugin for
 system. `tangent` is the English brand name of Tianzheng (天正).
 
 The plugin runs **inside the WebView** as a module script loaded by the host. It
-never touches `cad-db`, the filesystem, or Tauri IPC. Its only job is to turn the
-host's extracted vendor records into display-only derived primitives.
+never touches `cad-db`, the filesystem, or Tauri IPC. Its job is to turn the
+host's extracted vendor records into display-only derived primitives and,
+optionally, to expose read-only `TCH_*` property panels and edit-command
+refusals through the registration extension below.
 
 ## Contract (ABI v1)
 
 ```ts
 export const abiVersion: 1;
 export function decode(records: ArrayBuffer): ArrayBuffer;
+
+// Optional extension; hosts that do not call it keep only `decode`.
+export function register(host: VendorPluginHost): void;
 ```
 
 The built module also registers itself on
-`globalThis.__YACR_VENDOR_PLUGIN__ = { abiVersion, decode }`; the host validates
-that global before use.
+`globalThis.__YACR_VENDOR_PLUGIN__ = { abiVersion, decode, register }`; the host
+validates that global before use.
 
 The binary frames are specified in [docs/abi-v1.md](docs/abi-v1.md). The result
 frame contains entity groups and primitives (lines/segments/arcs/circles/text/
 block inserts), with `applied` equal to the primitive count.
+
+## Optional registration extension
+
+`register(host)` is synchronous and installs two handlers:
+
+- `properties(selection) -> PluginPropertyPanel | null` — a read-only descriptor
+  for the host's property dock. `null` passes through to the built-in palette.
+- `command(request) -> { handled: true, messageKey } | null` — `null` lets the
+  command through. The plugin refuses the stable edit set (`MOVE`, `COPY`,
+  `ERASE`, `ROTATE`, `SCALE`, `MIRROR`, `STRETCH`, `TRIM`, `EXTEND`, `OFFSET`,
+  `EXPLODE`, `ARRAY`, `PEDIT`, `FILLET`, `CHAMFER`) when the selection resolves
+  to a decoded TCH record; draw commands are never intercepted.
+
+`cad-status` is not required by this plugin, and registration failures are not
+fatal (the host behaves as if no provider exists). Both handlers never throw:
+malformed or unknown input returns `null`.
+
+Only a **single** selection (`count === 1`, `!empty`) whose `handle` row is a
+plain uppercase/lowercase hex u64 is resolved. Multi-selection, missing handles,
+`none`, and handles absent from the last decoded records all pass through. The
+wire status carries only the intersection of selection rows, not a per-entity
+list, so multi-selection panels are a documented limitation.
+
+Panels are display-only: `kind` is the record class, `handle` is uppercase hex,
+and groups (`identity`, `geometry`, `text`) carry machine row keys such as
+`wall.height` / `text.content`. The host translates `properties.tch.<key>` and
+renders the values; the plugin emits no DOM, no HTML and no Chinese literals.
+Numeric values use up to 3 decimals with trailing zeros trimmed (`x, y, z` for
+points). Non-finite numeric values omit that row; non-numeric fallbacks use the
+literal `unknown`.
+
+`decode` caches the parsed `VendorRecord[]` in module scope so these handlers can
+resolve a handle. The cache is cleared at the start of every `decode` and left
+empty on any throw. Memory is bounded by the records-frame limit (<= 64 MiB):
+stream fields are `Uint8Array` views into that frame, so the cache keeps the
+buffer alive until the next `decode` but copies no payload bytes.
 
 ## Coverage
 

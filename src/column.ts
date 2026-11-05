@@ -4,7 +4,23 @@ import type { Point3 } from './bit-reader.ts';
 import { bump } from './diagnostics.ts';
 import type { ArcPrimitive, Primitive, VendorRecord } from './types.ts';
 
-export function decodeColumn(record: VendorRecord, reasons: Map<string, number>): Primitive[] | null {
+export interface ColumnVertex {
+  x: number;
+  y: number;
+  bulge: number;
+}
+
+export interface ColumnData {
+  position: Point3;
+  vertices: ColumnVertex[];
+  height: number;
+}
+
+/** Parse and validate a `TCH_COLUMN` body without building display primitives. */
+export function parseColumn(
+  record: VendorRecord,
+  reasons: Map<string, number>,
+): ColumnData | null {
   const main = reader(record.main, record.mainBits, record.mainSkipBits);
   const text = reader(record.text, record.textBits, record.textSkipBits);
 
@@ -42,7 +58,7 @@ export function decodeColumn(record: VendorRecord, reasons: Map<string, number>)
     bump(reasons, 'vendor.tch.column_vertex_count');
     return null;
   }
-  const vertices: { x: number; y: number; bulge: number }[] = [];
+  const vertices: ColumnVertex[] = [];
   for (let index = 0; index < count; index += 1) {
     const x = main.readRawDouble();
     const y = main.readRawDouble();
@@ -88,7 +104,13 @@ export function decodeColumn(record: VendorRecord, reasons: Map<string, number>)
     bump(reasons, 'vendor.tch.column_geometry_invalid');
     return null;
   }
-  return columnPrimitives(vertices, position.z, reasons);
+  return { position, vertices, height };
+}
+
+export function decodeColumn(record: VendorRecord, reasons: Map<string, number>): Primitive[] | null {
+  const data = parseColumn(record, reasons);
+  if (!data) return null;
+  return columnPrimitives(data.vertices, data.position.z, reasons);
 }
 
 // ---------------------------------------------------------------------------

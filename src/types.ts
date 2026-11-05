@@ -25,6 +25,10 @@ export type Primitive = LinesPrimitive | ArcPrimitive | CirclePrimitive | TextPr
 export interface DecodedEntity { handle: bigint; primitives: Primitive[] }
 export interface VendorRecord {
   className: string; handle: bigint; dwgVersion: number;
+  /** 0 = UnknownEntity, 1 = ProxyEntity (wire value). */
+  source?: number;
+  /** Number of reference handles in the record (values are not retained). */
+  referenceCount?: number;
   main: Uint8Array; mainBits: number; text: Uint8Array; textBits: number;
   handleStream: Uint8Array; handleBits: number;
   mainSkipBits: number; textSkipBits: number; handleSkipBits: number;

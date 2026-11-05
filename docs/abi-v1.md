@@ -69,3 +69,49 @@ and non-UTF-8 diagnostics are rejected rather than repaired.
 Every input record must end up in exactly one bucket: decoded, unsupported, or
 valid-but-not-drawable (`no_display`). The plugin emits
 `vendor.tch.unaccounted` when the three counts do not sum to `record_count`.
+
+## Optional registration extension
+
+ABI stays **1** and neither frame layout changes. The module may additionally
+export and expose on `globalThis.__YACR_VENDOR_PLUGIN__`:
+
+```ts
+export function register(host: VendorPluginHost): void;
+```
+
+The host calls `register` at most once at startup. A missing export, a throwing
+`register`, or a handler returning `null` is “no provider”: decoding is never
+blocked and the host keeps its built-in property palette / command path.
+
+Events consumed by this plugin:
+
+- `properties(selection)` → `PluginPropertyPanel | null`. The panel carries
+  `kind` (record class), `handle` (uppercase hex), and groups
+  `identity`, `geometry`, `text` with machine row keys (`identity.class`,
+  `identity.handle`, `identity.layer`, `identity.source`,
+  `identity.dwg_version`, `identity.record_bytes`, `identity.references`,
+  `wall.*`, `column.*`, `text.*`, `opening.*`). The host translates
+  `properties.tch.<key>`; unknown keys fall back to the raw key. The plugin
+  emits no HTML, DOM, or localized text.
+- `command(request)` → `{ handled: true, messageKey } | null`. For a resolved
+  TCH record and an edit command (`MOVE`, `COPY`, `ERASE`, `ROTATE`, `SCALE`,
+  `MIRROR`, `STRETCH`, `TRIM`, `EXTEND`, `OFFSET`, `EXPLODE`, `ARRAY`,
+  `PEDIT`, `FILLET`, `CHAMFER`) it refuses with
+  `vendor.editing.unsupported`. Draw commands are not intercepted.
+- `cad-status` is optional and unused by this plugin.
+
+Both handlers are synchronous and must not throw; malformed or unknown input
+returns `null`. Only a single selection (`count === 1`, `!empty`, non-mixed
+`handle` row with a hex u64) is resolved against records cached by the last
+`decode`. Multi-selection is pass-through because the wire status carries only
+the intersection of selection rows, not a per-entity list.
+
+Numeric panel values use up to 3 decimals with trailing zeros trimmed; points
+are `x, y, z`. Non-finite numbers omit the row, and non-numeric fallbacks are
+the literal `unknown`.
+
+`decode` caches the parsed `VendorRecord[]` for handle lookup, clears the cache
+at the start of every call, and leaves it empty when it throws. Memory is
+bounded by the records-frame limit (<= 64 MiB); record streams are views into
+that single `ArrayBuffer`, so the frame stays reachable until the next decode
+but is not copied.
