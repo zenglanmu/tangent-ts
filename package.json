@@ -1,0 +1,25 @@
+{
+  "name": "tangent-ts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tianzheng (TCH_*) vendor-record decoder plugin for yacr, ABI v1",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenglanmu/tangent-ts.git"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "rolldown src/index.ts --format esm --platform browser --file dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "rolldown": "^1.2.13",
+    "typescript": "^7.0.2"
+  }
+}
