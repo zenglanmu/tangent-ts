@@ -10,6 +10,7 @@ const WALL_GEOMETRY_BYTES = 84;
 export interface WallData {
   start: Point3; end: Point3; left: number; right: number; height: number;
   joins: number[]; openings: number; length: number;
+  angle: number; material: number; insulation: number;
 }
 
 export function parseWall(record: VendorRecord, reasons: Map<string, number>): WallData | null {
@@ -69,7 +70,7 @@ export function parseWall(record: VendorRecord, reasons: Map<string, number>): W
 
   main.readByte(); // extra (observed 1 on the real fixture)
   const openings = main.readBitShort();
-  main.readByte(); // material
+  const material = main.readByte();
   const patches = main.readByte();
   const insulation = main.readBitDouble();
   const joins = [
@@ -101,7 +102,7 @@ export function parseWall(record: VendorRecord, reasons: Map<string, number>): W
     bump(reasons, 'vendor.tch.wall_geometry_invalid');
     return null;
   }
-  return { start, end, left, right, height, joins, openings, length };
+  return { start, end, left, right, height, joins, openings, length, angle, material, insulation };
 }
 
 /** Build the wall body, splitting both sides around merged opening intervals. */

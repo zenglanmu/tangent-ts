@@ -14,6 +14,7 @@
 import { decodeOpening } from './opening.ts';
 import { parseColumn } from './column.ts';
 import { parseText } from './text.ts';
+import type { Point3 } from './bit-reader.ts';
 import type { VendorRecord } from './types.ts';
 import { parseWall } from './wall.ts';
 
@@ -212,12 +213,22 @@ function wallRows(record: VendorRecord): PluginPropertyRow[] | null {
   const rows: PluginPropertyRow[] = [];
   pushPoint(rows, 'wall.start', wall.start.x, wall.start.y, wall.start.z);
   pushPoint(rows, 'wall.end', wall.end.x, wall.end.y, wall.end.z);
+  pushNumber(rows, 'wall.length', wall.length);
+  pushNumber(rows, 'wall.width', wall.left + wall.right);
   pushNumber(rows, 'wall.thickness_left', wall.left);
   pushNumber(rows, 'wall.thickness_right', wall.right);
   pushNumber(rows, 'wall.height', wall.height);
-  pushNumber(rows, 'wall.length', wall.length);
+  pushNumber(rows, 'wall.angle', wallDirectionDegrees(wall.start, wall.end));
+  pushNumber(rows, 'wall.material', wall.material);
+  pushNumber(rows, 'wall.insulation', wall.insulation);
   pushNumber(rows, 'wall.openings', wall.openings);
   return rows;
+}
+
+/** Plan direction from `start` to `end` in degrees from +X, normalized to `[0, 360)`. */
+function wallDirectionDegrees(start: Point3, end: Point3): number {
+  const degrees = (Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI;
+  return ((degrees % 360) + 360) % 360;
 }
 
 function columnRows(record: VendorRecord): PluginPropertyRow[] | null {
